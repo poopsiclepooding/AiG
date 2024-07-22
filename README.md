@@ -16,7 +16,7 @@ apt-get install sox libsndfile1 ffmpeg
 ```
 Install flash linear attention 
 ```
-pip install -U git+https://github.com/sustcsonglin/flash-linear-attention`
+pip install -U git+https://github.com/sustcsonglin/flash-linear-attention
 ```
 
 Now go to the file ast/src/models/ast_models.py
