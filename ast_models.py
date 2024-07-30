@@ -264,6 +264,7 @@ class ASTModel(nn.Module):
         device = "cuda"
         config = GLAConfig(hidden_size=768)
         self.blocks = [GLABlock(config, i).to(device).to(dtype) for i in range(num_layers)]
+        self.v.blocks = self.blocks
         
     def get_shape(self, fstride, tstride, input_fdim=128, input_tdim=1024):
         test_input = torch.randn(1, 1, input_fdim, input_tdim)
@@ -290,7 +291,7 @@ class ASTModel(nn.Module):
         x = torch.cat((cls_tokens, dist_token, x), dim=1)
         x = x + self.v.pos_embed
         x = self.v.pos_drop(x)
-        for blk in self.blocks:
+        for blk in self.v.blocks:
             x = blk(x)
             x = x[0]
         x = self.v.norm(x)
