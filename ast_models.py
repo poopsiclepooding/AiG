@@ -260,10 +260,12 @@ class ASTModel(nn.Module):
                 new_pos_embed = torch.nn.functional.interpolate(new_pos_embed, size=(f_dim, t_dim), mode='bilinear')
             new_pos_embed = new_pos_embed.reshape(1, 768, num_patches).transpose(1, 2)
             self.v.pos_embed = nn.Parameter(torch.cat([self.v.pos_embed[:, :2, :].detach(), new_pos_embed], dim=1))
-        dtype = torch.float16
+        dtype = torch.float32
         device = "cuda"
         config = GLAConfig(hidden_size=768)
-        self.blocks = [GLABlock(config, i).to(device).to(dtype) for i in range(num_layers)]
+        self.blocks = nn.ModuleList([
+                GLABlock(config=config, layer_idx=i).to(device).to(dtype) for i in range(len(self.v.blocks))
+            ])
         self.v.blocks = self.blocks
         
     def get_shape(self, fstride, tstride, input_fdim=128, input_tdim=1024):
