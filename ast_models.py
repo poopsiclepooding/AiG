@@ -162,6 +162,8 @@ class ASTModel(nn.Module):
             print('ImageNet pretraining: {:s}, AudioSet pretraining: {:s}'.format(str(imagenet_pretrain),str(audioset_pretrain)))
         # override timm input shape restriction
         timm.models.vision_transformer.PatchEmbed = PatchEmbed
+        dtype = torch.float32
+        device = "cuda"
 
         # if AudioSet pretraining is not used (but ImageNet pretraining may still apply)
         if audioset_pretrain == False:
@@ -178,7 +180,7 @@ class ASTModel(nn.Module):
             self.original_num_patches = self.v.patch_embed.num_patches
             self.oringal_hw = int(self.original_num_patches ** 0.5)
             self.original_embedding_dim = self.v.pos_embed.shape[2]
-            self.mlp_head = nn.Sequential(nn.LayerNorm(self.original_embedding_dim), nn.Linear(self.original_embedding_dim, label_dim))
+            self.mlp_head = nn.Sequential(nn.LayerNorm(self.original_embedding_dim), nn.Linear(self.original_embedding_dim, label_dim)).to(dtype)
 
             # automatcially get the intermediate shape
             f_dim, t_dim = self.get_shape(fstride, tstride, input_fdim, input_tdim)
@@ -237,7 +239,7 @@ class ASTModel(nn.Module):
             audio_model.load_state_dict(sd, strict=False)
             self.v = audio_model.module.v
             self.original_embedding_dim = self.v.pos_embed.shape[2]
-            self.mlp_head = nn.Sequential(nn.LayerNorm(self.original_embedding_dim), nn.Linear(self.original_embedding_dim, label_dim))
+            self.mlp_head = nn.Sequential(nn.LayerNorm(self.original_embedding_dim), nn.Linear(self.original_embedding_dim, label_dim)).to(dtype)
 
             f_dim, t_dim = self.get_shape(fstride, tstride, input_fdim, input_tdim)
             num_patches = f_dim * t_dim
@@ -260,8 +262,6 @@ class ASTModel(nn.Module):
                 new_pos_embed = torch.nn.functional.interpolate(new_pos_embed, size=(f_dim, t_dim), mode='bilinear')
             new_pos_embed = new_pos_embed.reshape(1, 768, num_patches).transpose(1, 2)
             self.v.pos_embed = nn.Parameter(torch.cat([self.v.pos_embed[:, :2, :].detach(), new_pos_embed], dim=1))
-        dtype = torch.float32
-        device = "cuda"
         config = GLAConfig(hidden_size=768)
         self.blocks = nn.ModuleList([
                 GLABlock(config=config, layer_idx=i).to(device).to(dtype) for i in range(len(self.v.blocks))
@@ -276,30 +276,40 @@ class ASTModel(nn.Module):
         t_dim = test_out.shape[3]
         return f_dim, t_dim
 
-    @autocast()
+    #@autocast()
     def forward(self, x):
         """
         :param x: the input spectrogram, expected shape: (batch_size, time_frame_num, frequency_bins), e.g., (12, 1024, 128)
         :return: prediction
         """
         # expect input x = (batch_size, time_frame_num, frequency_bins), e.g., (12, 1024, 128)
+        #print("input dtype", x.dtype)
         x = x.unsqueeze(1)
         x = x.transpose(2, 3)
 
         B = x.shape[0]
         x = self.v.patch_embed(x)
+
         cls_tokens = self.v.cls_token.expand(B, -1, -1)
         dist_token = self.v.dist_token.expand(B, -1, -1)
         x = torch.cat((cls_tokens, dist_token, x), dim=1)
         x = x + self.v.pos_embed
         x = self.v.pos_drop(x)
+        #if torch.isnan(x).any() or torch.isinf(x).any():
+        #    print("NaN or Inf detected in MyLayer 1")
+        #print("pre vig blocks type", x.dtype)
         for blk in self.v.blocks:
             x = blk(x)
             x = x[0]
+        #print("vig blocks output type", x.dtype)
+        #if torch.isnan(x).any() or torch.isinf(x).any():
+        #    print("NaN or Inf detected in MyLayer 2")
         x = self.v.norm(x)
+        #print("norm output type", x.dtype)
         x = (x[:, 0] + x[:, 1]) / 2
-
+        #print("avg output dtype", x.dtype)
         x = self.mlp_head(x)
+        #print("mlp output type", x.dtype)
         return x
 
 if __name__ == '__main__':
