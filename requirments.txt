@@ -1,10 +1,9 @@
 llvmlite
 matplotlib==3.4.2
 numba
-numpy==1.20.3
+numpy
 scikit-learn
 scipy
-sklearn==0.0
 timm==0.4.5
 torchaudio
 torchvision
